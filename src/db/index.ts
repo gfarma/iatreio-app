@@ -23,7 +23,17 @@ function createDb(): Database {
   return drizzle(process.env.PGLITE_PATH ?? ".data/pglite", { schema }) as unknown as Database;
 }
 
-export const db: Database = globalForDb.__iatreioDb ?? createDb();
-if (process.env.NODE_ENV !== "production") globalForDb.__iatreioDb = db;
+/** Lazy proxy: the client (and PGlite's wasm) initializes on first query, never at build time. */
+function lazyDb(): Database {
+  return new Proxy({} as Database, {
+    get(_target, prop) {
+      const real = (globalForDb.__iatreioDb ??= createDb());
+      const value = real[prop as keyof Database];
+      return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(real) : value;
+    },
+  });
+}
+
+export const db: Database = lazyDb();
 
 export * as tables from "./schema";

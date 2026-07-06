@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  /* «Ήρεμο κλινικό» — ζεστό ιβουάρ, βαθύ petrol, πινελιές ώχρας */
+  --color-paper: #f6f4ee;
+  --color-surface: #fffdf8;
+  --color-ink: #1c2b2d;
+  --color-mist: #5f7173;
+  --color-line: #e2ddd0;
+  --color-pine: #0e5f56;
+  --color-pine-deep: #093f39;
+  --color-sage: #e3ece6;
+  --color-ochre: #b07a10;
+  --color-clay: #b3543e;
+  --color-cream: #efe9db;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-commissioner), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-literata), Georgia, serif;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --shadow-card: 0 1px 2px rgb(28 43 45 / 0.05), 0 6px 24px -12px rgb(28 43 45 / 0.12);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-pine);
+  color: var(--color-surface);
+}
+
+/* Subtle paper grain */
+.grain {
+  background-image: radial-gradient(rgb(28 43 45 / 0.035) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
 }
