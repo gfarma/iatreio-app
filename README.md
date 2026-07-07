@@ -3,6 +3,9 @@
 Multi-specialty πρόγραμμα διαχείρισης ιατρείου για την ελληνική αγορά, με AI-native
 διοικητικό layer (ποτέ διάγνωση) και δημόσια σελίδα online κρατήσεων ανά ιατρείο.
 
+**🌐 Live demo:** https://iatreio.46-225-102-204.sslip.io — login `owner@demo.gr` /
+`demo1234` · [δημόσια σελίδα κράτησης](https://iatreio.46-225-102-204.sslip.io/demo-derma/booking)
+
 > ⚠️ **Demo περιβάλλον — μόνο πλαστά δεδομένα.** Δεν μπαίνουν πραγματικά δεδομένα
 > ασθενών πριν: (1) κλειδωθεί DPA-backed AI πάροχος (EU), (2) γίνει security review,
 > (3) αποφασιστεί το τελικό hosting (Vercel/Neon EU ή δικό μας VPS).
