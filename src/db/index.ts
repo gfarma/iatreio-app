@@ -2,8 +2,9 @@ import * as schema from "./schema";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 /**
- * Dual-mode database client:
- *  - DATABASE_URL set  -> Neon serverless Postgres (production / Vercel)
+ * Tri-mode database client:
+ *  - DATABASE_URL @ *.neon.tech -> Neon serverless driver (HTTP)
+ *  - DATABASE_URL anything else -> node-postgres (self-hosted Postgres/docker)
  *  - DATABASE_URL unset -> embedded PGlite stored under .data/pglite (local dev,
  *    zero setup — same Postgres dialect, same Drizzle schema)
  */
@@ -13,10 +14,16 @@ export type Database = PgliteDatabase<typeof schema>;
 const globalForDb = globalThis as unknown as { __iatreioDb?: Database };
 
 function createDb(): Database {
-  if (process.env.DATABASE_URL) {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    if (/\.neon\.tech/.test(url)) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { drizzle } = require("drizzle-orm/neon-http") as typeof import("drizzle-orm/neon-http");
+      return drizzle(url, { schema }) as unknown as Database;
+    }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { drizzle } = require("drizzle-orm/neon-http") as typeof import("drizzle-orm/neon-http");
-    return drizzle(process.env.DATABASE_URL, { schema }) as unknown as Database;
+    const { drizzle } = require("drizzle-orm/node-postgres") as typeof import("drizzle-orm/node-postgres");
+    return drizzle(url, { schema }) as unknown as Database;
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { drizzle } = require("drizzle-orm/pglite") as typeof import("drizzle-orm/pglite");

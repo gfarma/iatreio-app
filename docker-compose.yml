@@ -1,0 +1,39 @@
+services:
+  iatreio-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: iatreio
+      POSTGRES_USER: iatreio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - iatreio-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iatreio -d iatreio"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  iatreio-app:
+    build: .
+    container_name: iatreio-app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://iatreio:${POSTGRES_PASSWORD}@iatreio-db:5432/iatreio
+      AUTH_SECRET: ${AUTH_SECRET}
+      ENABLE_AI_FEATURES: "false"
+    depends_on:
+      iatreio-db:
+        condition: service_healthy
+    networks:
+      - default
+      - web
+
+networks:
+  # Shared reverse-proxy network (fshome-nginx) — override per host via .env
+  web:
+    external: true
+    name: ${PROXY_NETWORK:-fshome-elastic_elastic}
+
+volumes:
+  iatreio-db-data:
