@@ -2,7 +2,9 @@ FROM node:22-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# npm install (not ci): the Windows-generated lockfile omits linux-only
+# optional deps (npm/cli#4828) and npm ci refuses to fill them in
+RUN npm install --no-audit --no-fund
 
 COPY . .
 RUN npm run build
