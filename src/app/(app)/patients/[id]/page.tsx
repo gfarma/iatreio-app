@@ -101,7 +101,12 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
             </ButtonLink>
           ) : null}
           {canSeeVisits && !patient.archivedAt ? (
-            <ButtonLink href={`/visits/new?patientId=${patient.id}`}>+ Νέα επίσκεψη</ButtonLink>
+            <>
+              <ButtonLink href={`/patients/${patient.id}/certificate`} variant="secondary">
+                📄 Βεβαίωση
+              </ButtonLink>
+              <ButtonLink href={`/visits/new?patientId=${patient.id}`}>+ Νέα επίσκεψη</ButtonLink>
+            </>
           ) : null}
         </div>
       </div>

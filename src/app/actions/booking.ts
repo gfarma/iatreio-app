@@ -2,12 +2,12 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { appointments, availabilityRules, clinics } from "@/db/schema";
+import { appointments, availabilityRules, clinics, timeOff } from "@/db/schema";
 import { computeFreeSlots } from "@/lib/slots";
 import { zonedToUtc, addDaysStr, todayStr } from "@/lib/dates";
 import { logAudit } from "@/lib/audit";
 
-export type BookingState = { error?: string; success?: boolean };
+export type BookingState = { error?: string; success?: boolean; manageUrl?: string };
 
 // Naive in-memory rate limit (per serverless instance) — good enough to slow
 // down casual abuse on the public form; a real deployment adds an edge limiter.
@@ -72,7 +72,12 @@ export async function publicBook(_prev: BookingState, formData: FormData): Promi
   });
   const busyToday = busy.filter((b) => b.startsAt >= dayStart && b.startsAt < dayEnd);
 
-  const slots = computeFreeSlots(date, rules, busyToday);
+  const offRanges = await db.query.timeOff.findMany({
+    where: and(eq(timeOff.clinicId, clinic.id), eq(timeOff.doctorUserId, doctorUserId)),
+    columns: { startDate: true, endDate: true },
+  });
+
+  const slots = computeFreeSlots(date, rules, busyToday, new Date(), offRanges);
   const slot = slots.find((s) => s.label === time);
   if (!slot) return { error: "Η ώρα που επιλέξατε μόλις κλείστηκε. Επιλέξτε άλλη ώρα." };
 
@@ -99,6 +104,6 @@ export async function publicBook(_prev: BookingState, formData: FormData): Promi
     entityId: a.id,
   });
 
-  // TODO Phase 2: send SMS/email confirmation via the notification abstraction
-  return { success: true };
+  // TODO Phase 2: send the manage link via SMS/Viber automatically
+  return { success: true, manageUrl: `/r/${a.manageToken}` };
 }

@@ -14,6 +14,7 @@ import {
 } from "@/lib/dates";
 import { setAppointmentStatus } from "@/app/actions/appointments";
 import { ButtonLink, Card, EmptyState, PageTitle, StatusBadge, STATUS_LABELS } from "@/components/ui";
+import { CopyLinkButton } from "@/components/copy-link-button";
 
 export const metadata = { title: "Ραντεβού" };
 
@@ -192,6 +193,9 @@ export default async function AppointmentsPage({
                           <button className="rounded-md bg-cream px-2 py-0.5 text-xs font-semibold text-ink hover:bg-line">
                             OK
                           </button>
+                          {["pending", "confirmed"].includes(a.status) ? (
+                            <CopyLinkButton path={`/r/${a.manageToken}`} />
+                          ) : null}
                           {a.patient && a.status === "completed" ? (
                             <Link
                               href={`/visits/new?patientId=${a.patient.id}&appointmentId=${a.id}`}

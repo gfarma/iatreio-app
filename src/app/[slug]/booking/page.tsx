@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { appointments, availabilityRules, clinicMembers, clinics } from "@/db/schema";
-import { computeFreeSlots } from "@/lib/slots";
+import { appointments, availabilityRules, clinicMembers, clinics, timeOff } from "@/db/schema";
+import { computeFreeSlots, isBlockedDay } from "@/lib/slots";
 import { addDaysStr, formatDateGr, todayStr, zonedToUtc, weekdayOfDateStr } from "@/lib/dates";
 import { BookingForm } from "@/components/booking-form";
 import { ChatWidget } from "@/components/chat-widget";
@@ -55,24 +55,32 @@ export default async function BookingPage({
   const days = Array.from({ length: 14 }, (_, i) => addDaysStr(today, i));
 
   let slots: { label: string }[] = [];
+  let offRanges: { startDate: string; endDate: string }[] = [];
   if (doctorId) {
-    const rules = await db.query.availabilityRules.findMany({
-      where: and(
-        eq(availabilityRules.clinicId, clinic.id),
-        eq(availabilityRules.doctorUserId, doctorId),
-      ),
-    });
-    const busy = await db.query.appointments.findMany({
-      where: and(
-        eq(appointments.clinicId, clinic.id),
-        eq(appointments.doctorUserId, doctorId),
-        inArray(appointments.status, ["pending", "confirmed", "completed"]),
-        gte(appointments.startsAt, zonedToUtc(date, "00:00")),
-        lt(appointments.startsAt, zonedToUtc(addDaysStr(date, 1), "00:00")),
-      ),
-      columns: { startsAt: true, endsAt: true },
-    });
-    slots = computeFreeSlots(date, rules, busy);
+    const [rules, busy, off] = await Promise.all([
+      db.query.availabilityRules.findMany({
+        where: and(
+          eq(availabilityRules.clinicId, clinic.id),
+          eq(availabilityRules.doctorUserId, doctorId),
+        ),
+      }),
+      db.query.appointments.findMany({
+        where: and(
+          eq(appointments.clinicId, clinic.id),
+          eq(appointments.doctorUserId, doctorId),
+          inArray(appointments.status, ["pending", "confirmed", "completed"]),
+          gte(appointments.startsAt, zonedToUtc(date, "00:00")),
+          lt(appointments.startsAt, zonedToUtc(addDaysStr(date, 1), "00:00")),
+        ),
+        columns: { startsAt: true, endsAt: true },
+      }),
+      db.query.timeOff.findMany({
+        where: and(eq(timeOff.clinicId, clinic.id), eq(timeOff.doctorUserId, doctorId)),
+        columns: { startDate: true, endDate: true },
+      }),
+    ]);
+    offRanges = off;
+    slots = computeFreeSlots(date, rules, busy, new Date(), offRanges);
   }
 
   const jsonLd = {
@@ -140,12 +148,18 @@ export default async function BookingPage({
         <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
           {days.map((d) => {
             const active = d === date;
+            const blocked = isBlockedDay(d, offRanges);
             return (
               <Link
                 key={d}
                 href={qs({ date: d })}
+                title={blocked ?? undefined}
                 className={`flex min-w-16 flex-col items-center rounded-xl border px-3 py-2 ${
-                  active ? "border-pine bg-pine text-surface" : "border-line bg-surface hover:border-pine"
+                  active
+                    ? "border-pine bg-pine text-surface"
+                    : blocked
+                      ? "border-line bg-paper text-mist/50"
+                      : "border-line bg-surface hover:border-pine"
                 }`}
               >
                 <span className={`text-[10px] font-bold uppercase ${active ? "text-surface/70" : "text-mist"}`}>
@@ -153,7 +167,7 @@ export default async function BookingPage({
                 </span>
                 <span className="font-display text-lg font-bold">{Number(d.slice(8))}</span>
                 <span className={`text-[10px] ${active ? "text-surface/70" : "text-mist"}`}>
-                  {d.slice(5, 7)}
+                  {blocked ? "αργία" : d.slice(5, 7)}
                 </span>
               </Link>
             );

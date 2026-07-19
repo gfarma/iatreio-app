@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeFreeSlots } from "../src/lib/slots";
+import { computeFreeSlots, isBlockedDay } from "../src/lib/slots";
+import { orthodoxEaster, holidayName } from "../src/lib/holidays";
 import { pseudonymize } from "../src/lib/ai/pseudonymize";
 import { noShowRisk } from "../src/lib/noshow";
 import { zonedToUtc, utcToLocalTimeStr, weekdayOfDateStr } from "../src/lib/dates";
@@ -50,6 +51,33 @@ test("pseudonymize strips names, ΑΜΚΑ, phones, emails", () => {
   assert.ok(!out.includes("6941234567"));
   assert.ok(!out.includes("nikos@mail.gr"));
   assert.ok(out.includes("κνησμό"));
+});
+
+test("orthodoxEaster: known dates", () => {
+  assert.equal(orthodoxEaster(2024), "2024-05-05");
+  assert.equal(orthodoxEaster(2025), "2025-04-20");
+  assert.equal(orthodoxEaster(2026), "2026-04-12");
+  assert.equal(orthodoxEaster(2027), "2027-05-02");
+});
+
+test("holidayName: fixed and movable Greek holidays", () => {
+  assert.equal(holidayName("2026-03-25"), "25η Μαρτίου");
+  assert.equal(holidayName("2026-04-10"), "Μεγάλη Παρασκευή");
+  assert.equal(holidayName("2026-04-13"), "Δευτέρα του Πάσχα");
+  assert.equal(holidayName("2026-02-23"), "Καθαρά Δευτέρα");
+  assert.equal(holidayName("2026-07-07"), null);
+});
+
+test("computeFreeSlots: holidays and doctor time-off produce no slots", () => {
+  const rules = [{ weekday: 3, startTime: "09:00", endTime: "11:00", slotMinutes: 30 }];
+  // 2026-03-25 is a Wednesday AND a national holiday
+  assert.deepEqual(computeFreeSlots("2026-03-25", rules, [], new Date(0)), []);
+  // time-off range covering the date
+  const off = [{ startDate: "2026-07-06", endDate: "2026-07-10" }];
+  const rulesTue = [{ weekday: 2, startTime: "09:00", endTime: "11:00", slotMinutes: 30 }];
+  assert.deepEqual(computeFreeSlots("2026-07-07", rulesTue, [], new Date(0), off), []);
+  assert.equal(isBlockedDay("2026-07-07", off), "Άδεια ιατρού");
+  assert.ok(computeFreeSlots("2026-07-14", rulesTue, [], new Date(0), off).length > 0);
 });
 
 test("noShowRisk: smoothed estimate with labels", () => {

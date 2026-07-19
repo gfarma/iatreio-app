@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { availabilityRules, clinicMembers, clinics, specialtyTemplates } from "@/db/schema";
+import { availabilityRules, clinicMembers, clinics, specialtyTemplates, timeOff } from "@/db/schema";
 import { requireContext } from "@/lib/session";
 import { assertCan, ROLE_LABELS } from "@/lib/rbac";
-import { addAvailabilityRule, deleteAvailabilityRule, updateClinic } from "@/app/actions/settings";
+import {
+  addAvailabilityRule,
+  addTimeOff,
+  deleteAvailabilityRule,
+  deleteTimeOff,
+  updateClinic,
+} from "@/app/actions/settings";
+import { formatDateGr } from "@/lib/dates";
 import { Badge, Button, Card, CardHeader, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 
 export const metadata = { title: "Ρυθμίσεις" };
@@ -15,7 +22,7 @@ export default async function SettingsPage() {
   const ctx = await requireContext();
   assertCan(ctx.role, "settings.manage");
 
-  const [clinic, members, rules, templates] = await Promise.all([
+  const [clinic, members, rules, templates, offRows] = await Promise.all([
     db.query.clinics.findFirst({ where: eq(clinics.id, ctx.clinic.id) }),
     db.query.clinicMembers.findMany({
       where: eq(clinicMembers.clinicId, ctx.clinic.id),
@@ -28,6 +35,11 @@ export default async function SettingsPage() {
     }),
     db.query.specialtyTemplates.findMany({
       where: eq(specialtyTemplates.clinicId, ctx.clinic.id),
+    }),
+    db.query.timeOff.findMany({
+      where: eq(timeOff.clinicId, ctx.clinic.id),
+      with: { doctor: { columns: { name: true } } },
+      orderBy: (t, { asc }) => [asc(t.startDate)],
     }),
   ]);
   if (!clinic) return null;
@@ -149,6 +161,55 @@ export default async function SettingsPage() {
                 </option>
               ))}
             </Select>
+          </Field>
+          <Button type="submit" variant="secondary">
+            + Προσθήκη
+          </Button>
+        </form>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Άδειες / απουσίες ιατρών"
+          subtitle="Στις ημέρες αυτές (και στις επίσημες αργίες, αυτόματα) δεν προσφέρονται online ραντεβού"
+        />
+        <ul className="divide-y divide-line">
+          {offRows.map((t) => (
+            <li key={t.id} className="flex items-center justify-between px-5 py-2.5">
+              <p className="text-sm">
+                <strong>
+                  {formatDateGr(new Date(t.startDate + "T12:00:00Z"), { day: "numeric", month: "short" })}
+                  {t.endDate !== t.startDate
+                    ? ` — ${formatDateGr(new Date(t.endDate + "T12:00:00Z"), { day: "numeric", month: "short", year: "numeric" })}`
+                    : ""}
+                </strong>
+                <span className="text-mist"> · {t.doctor.name}{t.reason ? ` · ${t.reason}` : ""}</span>
+              </p>
+              <form action={deleteTimeOff}>
+                <input type="hidden" name="id" value={t.id} />
+                <button className="text-xs font-semibold text-clay hover:underline">Διαγραφή</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+        <form action={addTimeOff} className="flex flex-wrap items-end gap-3 border-t border-line p-5">
+          <Field label="Ιατρός">
+            <Select name="doctorUserId" className="w-44">
+              {doctors.map((d) => (
+                <option key={d.user.id} value={d.user.id}>
+                  {d.user.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Από">
+            <Input name="startDate" type="date" required className="w-40" />
+          </Field>
+          <Field label="Έως (προαιρετικό)">
+            <Input name="endDate" type="date" className="w-40" />
+          </Field>
+          <Field label="Λόγος">
+            <Input name="reason" placeholder="π.χ. Άδεια" className="w-36" />
           </Field>
           <Button type="submit" variant="secondary">
             + Προσθήκη

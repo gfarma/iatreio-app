@@ -28,6 +28,14 @@ export function BookingForm({
         <p className="mx-auto mt-2 max-w-sm text-sm text-mist">
           Το ιατρείο θα επιβεβαιώσει το ραντεβού σας τηλεφωνικά ή με μήνυμα. Ευχαριστούμε!
         </p>
+        {state.manageUrl ? (
+          <a
+            href={state.manageUrl}
+            className="mt-4 inline-block rounded-lg bg-sage px-4 py-2 text-sm font-semibold text-pine-deep hover:bg-pine hover:text-surface"
+          >
+            Προβολή / διαχείριση ραντεβού →
+          </a>
+        ) : null}
       </div>
     );
   }

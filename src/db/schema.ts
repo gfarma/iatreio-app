@@ -145,10 +145,26 @@ export const availabilityRules = pgTable("availability_rules", {
   slotMinutes: integer("slot_minutes").notNull().default(30),
 });
 
+// Vacation / off-days per doctor — blocks public booking slots.
+export const timeOff = pgTable("time_off", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  clinicId: uuid("clinic_id")
+    .notNull()
+    .references(() => clinics.id, { onDelete: "cascade" }),
+  doctorUserId: uuid("doctor_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  startDate: text("start_date").notNull(), // inclusive, "YYYY-MM-DD"
+  endDate: text("end_date").notNull(), // inclusive
+  reason: text("reason"),
+});
+
 export const appointments = pgTable(
   "appointments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // Public self-service token: the patient can confirm/cancel via /r/<token>
+    manageToken: uuid("manage_token").notNull().defaultRandom().unique(),
     clinicId: uuid("clinic_id")
       .notNull()
       .references(() => clinics.id, { onDelete: "cascade" }),
@@ -319,4 +335,9 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
 export const availabilityRulesRelations = relations(availabilityRules, ({ one }) => ({
   clinic: one(clinics, { fields: [availabilityRules.clinicId], references: [clinics.id] }),
   doctor: one(users, { fields: [availabilityRules.doctorUserId], references: [users.id] }),
+}));
+
+export const timeOffRelations = relations(timeOff, ({ one }) => ({
+  clinic: one(clinics, { fields: [timeOff.clinicId], references: [clinics.id] }),
+  doctor: one(users, { fields: [timeOff.doctorUserId], references: [users.id] }),
 }));

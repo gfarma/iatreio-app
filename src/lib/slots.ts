@@ -1,4 +1,5 @@
 import { zonedToUtc, weekdayOfDateStr, utcToLocalTimeStr } from "./dates";
+import { holidayName } from "./holidays";
 
 export type Rule = {
   weekday: number;
@@ -9,19 +10,32 @@ export type Rule = {
 
 export type BusyInterval = { startsAt: Date; endsAt: Date };
 
+export type TimeOffRange = { startDate: string; endDate: string };
+
 export type Slot = { startsAt: Date; endsAt: Date; label: string };
+
+/** True when the doctor is unavailable that day (vacation or Greek public holiday). */
+export function isBlockedDay(dateStr: string, timeOff: TimeOffRange[] = []): string | null {
+  const holiday = holidayName(dateStr);
+  if (holiday) return holiday;
+  const off = timeOff.find((t) => t.startDate <= dateStr && dateStr <= t.endDate);
+  return off ? "Άδεια ιατρού" : null;
+}
 
 /**
  * Compute free bookable slots for one doctor on one local (Athens) date,
- * given their weekly availability rules and existing (non-cancelled)
- * appointments. Slots in the past are excluded.
+ * given their weekly availability rules, existing (non-cancelled)
+ * appointments, and any time-off ranges. Holidays and past slots are excluded.
  */
 export function computeFreeSlots(
   dateStr: string,
   rules: Rule[],
   busy: BusyInterval[],
   now: Date = new Date(),
+  timeOff: TimeOffRange[] = [],
 ): Slot[] {
+  if (isBlockedDay(dateStr, timeOff)) return [];
+
   const weekday = weekdayOfDateStr(dateStr);
   const slots: Slot[] = [];
 
