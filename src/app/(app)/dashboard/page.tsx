@@ -119,6 +119,14 @@ export default async function DashboardPage() {
                     {formatDateGr(a.startsAt, { day: "numeric", month: "short" })} ·{" "}
                     {utcToLocalTimeStr(a.startsAt)} · {a.contactPhone ?? ""}
                   </p>
+                  {!a.patientId && can(ctx.role, "patients.write") ? (
+                    <Link
+                      href={`/appointments/${a.id}/link`}
+                      className="mt-1 inline-block text-xs font-semibold text-pine hover:underline"
+                    >
+                      Σύνδεση με φάκελο ασθενή →
+                    </Link>
+                  ) : null}
                 </li>
               ))}
             </ul>

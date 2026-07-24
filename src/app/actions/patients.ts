@@ -9,22 +9,35 @@ import { patients, specialtyTemplates } from "@/db/schema";
 import { requireContext } from "@/lib/session";
 import { assertCan } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { validateAmka } from "@/lib/amka";
+
+export type PatientFormState = { error?: string };
 
 const patientSchema = z.object({
-  firstName: z.string().trim().min(1, "Το όνομα είναι υποχρεωτικό"),
-  lastName: z.string().trim().min(1, "Το επώνυμο είναι υποχρεωτικό"),
+  firstName: z.string().trim().min(1, "Το όνομα είναι υποχρεωτικό."),
+  lastName: z.string().trim().min(1, "Το επώνυμο είναι υποχρεωτικό."),
   birthDate: z.string().trim().optional(),
-  amka: z
-    .string()
-    .trim()
-    .regex(/^\d{11}$/, "Το ΑΜΚΑ έχει 11 ψηφία")
-    .optional()
-    .or(z.literal("")),
+  amka: z.string().trim().optional(),
   phone: z.string().trim().optional(),
-  email: z.string().trim().email("Μη έγκυρο email").optional().or(z.literal("")),
+  email: z.string().trim().email("Μη έγκυρο email.").optional().or(z.literal("")),
   address: z.string().trim().optional(),
   generalNotes: z.string().trim().optional(),
 });
+
+type Parsed = z.infer<typeof patientSchema>;
+
+function parsePatient(formData: FormData): Parsed | string {
+  const result = patientSchema.safeParse(Object.fromEntries(formData));
+  if (!result.success) {
+    return result.error.issues[0]?.message ?? "Ελέγξτε τα στοιχεία που συμπληρώσατε.";
+  }
+  const amka = result.data.amka ?? "";
+  if (amka) {
+    const check = validateAmka(amka);
+    if (!check.valid) return check.error!;
+  }
+  return result.data;
+}
 
 async function extractCustomFields(clinicId: string, formData: FormData) {
   const templates = await db.query.specialtyTemplates.findMany({
@@ -43,11 +56,16 @@ async function extractCustomFields(clinicId: string, formData: FormData) {
   return custom;
 }
 
-export async function createPatient(formData: FormData) {
+export async function createPatient(
+  _prev: PatientFormState,
+  formData: FormData,
+): Promise<PatientFormState> {
   const ctx = await requireContext();
   assertCan(ctx.role, "patients.write");
 
-  const parsed = patientSchema.parse(Object.fromEntries(formData));
+  const parsed = parsePatient(formData);
+  if (typeof parsed === "string") return { error: parsed };
+
   const customFields = await extractCustomFields(ctx.clinic.id, formData);
   const consent = formData.get("consent") === "on";
 
@@ -79,16 +97,22 @@ export async function createPatient(formData: FormData) {
   redirect(`/patients/${p.id}`);
 }
 
-export async function updatePatient(patientId: string, formData: FormData) {
+export async function updatePatient(
+  patientId: string,
+  _prev: PatientFormState,
+  formData: FormData,
+): Promise<PatientFormState> {
   const ctx = await requireContext();
   assertCan(ctx.role, "patients.write");
 
   const existing = await db.query.patients.findFirst({
     where: and(eq(patients.id, patientId), eq(patients.clinicId, ctx.clinic.id)),
   });
-  if (!existing) throw new Error("Ο ασθενής δεν βρέθηκε.");
+  if (!existing) return { error: "Ο ασθενής δεν βρέθηκε." };
 
-  const parsed = patientSchema.parse(Object.fromEntries(formData));
+  const parsed = parsePatient(formData);
+  if (typeof parsed === "string") return { error: parsed };
+
   const customFields = await extractCustomFields(ctx.clinic.id, formData);
 
   await db
@@ -119,8 +143,9 @@ export async function updatePatient(patientId: string, formData: FormData) {
 }
 
 /**
- * GDPR erasure: anonymizes the record in place (invoices & audit history keep
- * referential integrity, personal data is gone).
+ * GDPR erasure: removes the direct identifiers but keeps the clinical record,
+ * which Greek law (ν.3418/2005) requires to be retained for 10 years —
+ * expressly allowed by GDPR art. 17(3)(b).
  */
 export async function erasePatient(patientId: string) {
   const ctx = await requireContext();
@@ -154,7 +179,7 @@ export async function erasePatient(patientId: string) {
     action: "patient.erase",
     entityType: "patient",
     entityId: patientId,
-    meta: { reason: "gdpr_erasure" },
+    meta: { reason: "gdpr_erasure", clinicalRecordRetained: true },
   });
   revalidatePath("/patients");
   redirect("/patients");

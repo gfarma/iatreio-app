@@ -244,6 +244,9 @@ export const invoices = pgTable(
     items: jsonb("items").$type<InvoiceItem[]>().notNull().default([]),
     total: numeric("total", { precision: 10, scale: 2 }).notNull().default("0"),
     paymentMethod: text("payment_method").notNull().default("cash"), // cash | card | transfer
+    // Παραστατικά δεν διαγράφονται — ακυρώνονται, ώστε η αρίθμηση να μένει συνεχής.
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidReason: text("void_reason"),
     // Phase 2: myDATA integration fields (kept empty for now)
     mydataStatus: text("mydata_status"),
     mydataUid: text("mydata_uid"),

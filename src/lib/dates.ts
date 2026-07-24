@@ -27,7 +27,7 @@ function tzOffsetMs(tz: string, at: Date): number {
 /** "2026-07-07" + "09:30" in clinic-local time -> UTC Date (DST-safe). */
 export function zonedToUtc(dateStr: string, timeStr: string, tz = CLINIC_TZ): Date {
   const naive = new Date(`${dateStr}T${timeStr}:00Z`);
-  let offset = tzOffsetMs(tz, naive);
+  const offset = tzOffsetMs(tz, naive);
   let result = new Date(naive.getTime() - offset);
   const offset2 = tzOffsetMs(tz, result);
   if (offset2 !== offset) result = new Date(naive.getTime() - offset2);

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { aiInteractionLogs, availabilityRules, clinics } from "@/db/schema";
 import { aiEnabled, aiModel, chatComplete } from "@/lib/ai/provider";
+import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 const WEEKDAYS_GR = ["Κυριακή", "Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο"];
 
@@ -27,6 +28,17 @@ function hoursSummary(rules: { weekday: number; startTime: string; endTime: stri
 }
 
 export async function POST(req: Request) {
+  // Public, unauthenticated endpoint that can reach a paid AI provider —
+  // throttle hard before doing any work.
+  const ip = clientIp(req.headers);
+  const { allowed, retryAfterSec } = rateLimit(`chat:${ip}`, 15, 5 * 60_000);
+  if (!allowed) {
+    return NextResponse.json(
+      { reply: "Λάβαμε πολλά μηνύματα. Δοκιμάστε ξανά σε λίγο ή καλέστε μας τηλεφωνικά." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+    );
+  }
+
   const body = (await req.json().catch(() => null)) as { slug?: string; message?: string } | null;
   const slug = body?.slug ?? "";
   const message = (body?.message ?? "").trim().slice(0, 500);

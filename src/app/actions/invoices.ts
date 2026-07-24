@@ -1,12 +1,51 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { invoices, patients, type InvoiceItem } from "@/db/schema";
 import { requireContext } from "@/lib/session";
 import { assertCan } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+
+/**
+ * Void (not delete) an invoice: Greek bookkeeping requires the numbering
+ * sequence to stay unbroken, so cancelled documents remain visible.
+ */
+export async function voidInvoice(formData: FormData) {
+  const ctx = await requireContext();
+  assertCan(ctx.role, "invoices.write");
+
+  const id = String(formData.get("id") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim() || "Ακύρωση από το ιατρείο";
+
+  const existing = await db.query.invoices.findFirst({
+    where: and(eq(invoices.id, id), eq(invoices.clinicId, ctx.clinic.id)),
+    columns: { id: true, voidedAt: true, mydataUid: true },
+  });
+  if (!existing) throw new Error("Το παραστατικό δεν βρέθηκε.");
+  if (existing.voidedAt) throw new Error("Το παραστατικό είναι ήδη ακυρωμένο.");
+  if (existing.mydataUid) {
+    throw new Error("Το παραστατικό έχει διαβιβαστεί στο myDATA — απαιτείται πιστωτικό.");
+  }
+
+  await db
+    .update(invoices)
+    .set({ voidedAt: new Date(), voidReason: reason })
+    .where(and(eq(invoices.id, id), eq(invoices.clinicId, ctx.clinic.id)));
+
+  await logAudit({
+    clinicId: ctx.clinic.id,
+    userId: ctx.user.id,
+    action: "invoice.void",
+    entityType: "invoice",
+    entityId: id,
+    meta: { reason },
+  });
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+}
 
 export async function createInvoice(formData: FormData) {
   const ctx = await requireContext();

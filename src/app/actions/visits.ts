@@ -8,28 +8,11 @@ import { requireContext } from "@/lib/session";
 import { assertCan } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 
-export async function createVisit(formData: FormData) {
-  const ctx = await requireContext();
-  assertCan(ctx.role, "visits.write");
+export type VisitFormState = { error?: string };
 
-  const patientId = String(formData.get("patientId") ?? "");
-  const appointmentId = String(formData.get("appointmentId") ?? "") || null;
-  const notes = String(formData.get("notes") ?? "").trim();
-  const icd10 = String(formData.get("icd10") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const aiStructured = formData.get("aiStructured") === "true";
-  const aiLogId = String(formData.get("aiLogId") ?? "") || null;
-
-  const patient = await db.query.patients.findFirst({
-    where: and(eq(patients.id, patientId), eq(patients.clinicId, ctx.clinic.id)),
-  });
-  if (!patient) throw new Error("Ο ασθενής δεν βρέθηκε.");
-  if (!notes) throw new Error("Οι σημειώσεις είναι υποχρεωτικές.");
-
+async function collectCustomFields(clinicId: string, formData: FormData) {
   const templates = await db.query.specialtyTemplates.findMany({
-    where: and(eq(specialtyTemplates.clinicId, ctx.clinic.id), eq(specialtyTemplates.target, "visit")),
+    where: and(eq(specialtyTemplates.clinicId, clinicId), eq(specialtyTemplates.target, "visit")),
   });
   const customFields: Record<string, unknown> = {};
   for (const t of templates) {
@@ -41,6 +24,34 @@ export async function createVisit(formData: FormData) {
       else if (raw !== "") customFields[f.key] = String(raw);
     }
   }
+  return customFields;
+}
+
+function parseIcd(formData: FormData): string[] {
+  return String(formData.get("icd10") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export async function createVisit(
+  _prev: VisitFormState,
+  formData: FormData,
+): Promise<VisitFormState> {
+  const ctx = await requireContext();
+  assertCan(ctx.role, "visits.write");
+
+  const patientId = String(formData.get("patientId") ?? "");
+  const appointmentId = String(formData.get("appointmentId") ?? "") || null;
+  const notes = String(formData.get("notes") ?? "").trim();
+  const aiStructured = formData.get("aiStructured") === "true";
+  const aiLogId = String(formData.get("aiLogId") ?? "") || null;
+
+  const patient = await db.query.patients.findFirst({
+    where: and(eq(patients.id, patientId), eq(patients.clinicId, ctx.clinic.id)),
+  });
+  if (!patient) return { error: "Ο ασθενής δεν βρέθηκε." };
+  if (!notes) return { error: "Οι σημειώσεις είναι υποχρεωτικές." };
 
   const [v] = await db
     .insert(visits)
@@ -50,8 +61,8 @@ export async function createVisit(formData: FormData) {
       doctorUserId: ctx.user.id,
       appointmentId,
       notes,
-      icd10Codes: icd10,
-      customFields,
+      icd10Codes: parseIcd(formData),
+      customFields: await collectCustomFields(ctx.clinic.id, formData),
       aiStructured,
     })
     .returning();
@@ -73,4 +84,51 @@ export async function createVisit(formData: FormData) {
     meta: { aiStructured },
   });
   redirect(`/patients/${patientId}`);
+}
+
+/**
+ * Amend an existing visit. Medical records must be correctable, but the change
+ * has to leave a trail: the previous text is stored in the audit log so the
+ * original wording can always be recovered.
+ */
+export async function updateVisit(
+  visitId: string,
+  _prev: VisitFormState,
+  formData: FormData,
+): Promise<VisitFormState> {
+  const ctx = await requireContext();
+  assertCan(ctx.role, "visits.write");
+
+  const existing = await db.query.visits.findFirst({
+    where: and(eq(visits.id, visitId), eq(visits.clinicId, ctx.clinic.id)),
+  });
+  if (!existing) return { error: "Η επίσκεψη δεν βρέθηκε." };
+
+  const notes = String(formData.get("notes") ?? "").trim();
+  if (!notes) return { error: "Οι σημειώσεις είναι υποχρεωτικές." };
+
+  const icd10Codes = parseIcd(formData);
+  const customFields = await collectCustomFields(ctx.clinic.id, formData);
+
+  await db
+    .update(visits)
+    .set({
+      notes,
+      icd10Codes,
+      customFields: { ...existing.customFields, ...customFields },
+    })
+    .where(and(eq(visits.id, visitId), eq(visits.clinicId, ctx.clinic.id)));
+
+  await logAudit({
+    clinicId: ctx.clinic.id,
+    userId: ctx.user.id,
+    action: "visit.amend",
+    entityType: "visit",
+    entityId: visitId,
+    meta: {
+      previousNotes: existing.notes,
+      previousIcd10: existing.icd10Codes,
+    },
+  });
+  redirect(`/patients/${existing.patientId}`);
 }

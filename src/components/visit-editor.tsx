@@ -1,49 +1,56 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import type { TemplateField } from "@/db/schema";
-import { createVisit } from "@/app/actions/visits";
+import type { VisitFormState } from "@/app/actions/visits";
 import { rejectAiDraft, structureNotes, suggestIcd10, type IcdSuggestion } from "@/app/actions/ai";
 import { Button, Field, Textarea } from "./ui";
 import { TemplateFieldInputs } from "./template-fields";
 
 export function VisitEditor({
+  action,
   patientId,
   appointmentId,
   templateFields,
   aiAvailable,
+  initial,
+  submitLabel = "Αποθήκευση επίσκεψης",
 }: {
+  action: (prev: VisitFormState, formData: FormData) => Promise<VisitFormState>;
   patientId: string;
   appointmentId?: string;
   templateFields: TemplateField[];
   aiAvailable: boolean;
+  initial?: { notes: string; icd10Codes: string[]; customFields: Record<string, unknown> };
+  submitLabel?: string;
 }) {
-  const [notes, setNotes] = useState("");
+  const [state, formAction, saving] = useActionState<VisitFormState, FormData>(action, {});
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [draft, setDraft] = useState<{ output: string; logId: string } | null>(null);
   const [aiAccepted, setAiAccepted] = useState<string | null>(null); // logId when accepted
-  const [icd, setIcd] = useState<string[]>([]);
+  const [icd, setIcd] = useState<string[]>(initial?.icd10Codes ?? []);
   const [suggestions, setSuggestions] = useState<IcdSuggestion[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const runStructure = () =>
     startTransition(async () => {
-      setError(null);
+      setAiError(null);
       const res = await structureNotes(patientId, notes);
       if (res.ok) setDraft({ output: res.output, logId: res.logId });
-      else setError(res.error);
+      else setAiError(res.error);
     });
 
   const runIcd = () =>
     startTransition(async () => {
-      setError(null);
+      setAiError(null);
       const res = await suggestIcd10(patientId, notes);
       if (res.ok) setSuggestions(res.suggestions);
-      else setError(res.error);
+      else setAiError(res.error);
     });
 
   return (
-    <form action={createVisit} className="space-y-5">
+    <form action={formAction} className="space-y-5">
       <input type="hidden" name="patientId" value={patientId} />
       {appointmentId ? <input type="hidden" name="appointmentId" value={appointmentId} /> : null}
       <input type="hidden" name="icd10" value={icd.join(",")} />
@@ -79,7 +86,7 @@ export function VisitEditor({
         </p>
       )}
 
-      {error ? <p className="rounded-lg bg-clay/10 px-3 py-2 text-sm text-clay">{error}</p> : null}
+      {aiError ? <p className="rounded-lg bg-clay/10 px-3 py-2 text-sm text-clay">{aiError}</p> : null}
 
       {draft ? (
         <div className="rounded-xl border-2 border-dashed border-pine/40 bg-sage/40 p-4">
@@ -141,8 +148,19 @@ export function VisitEditor({
       ) : null}
 
       {icd.length > 0 ? (
-        <p className="text-sm text-mist">
-          Επιλεγμένοι κωδικοί: <strong className="text-ink">{icd.join(", ")}</strong>
+        <p className="flex flex-wrap items-center gap-2 text-sm text-mist">
+          Κωδικοί:
+          {icd.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setIcd((prev) => prev.filter((x) => x !== c))}
+              title="Αφαίρεση"
+              className="rounded-full bg-sage px-2 py-0.5 text-xs font-semibold text-pine-deep hover:bg-clay hover:text-surface"
+            >
+              {c} ✕
+            </button>
+          ))}
         </p>
       ) : null}
 
@@ -152,13 +170,17 @@ export function VisitEditor({
             Πεδία ειδικότητας
           </legend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <TemplateFieldInputs fields={templateFields} />
+            <TemplateFieldInputs fields={templateFields} values={initial?.customFields ?? {}} />
           </div>
         </fieldset>
       ) : null}
 
-      <Button type="submit" disabled={pending}>
-        Αποθήκευση επίσκεψης
+      {state.error ? (
+        <p className="rounded-lg bg-clay/10 px-3 py-2 text-sm text-clay">{state.error}</p>
+      ) : null}
+
+      <Button type="submit" disabled={pending || saving}>
+        {saving ? "Αποθήκευση…" : submitLabel}
       </Button>
     </form>
   );

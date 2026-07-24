@@ -5,6 +5,9 @@ import { orthodoxEaster, holidayName } from "../src/lib/holidays";
 import { pseudonymize } from "../src/lib/ai/pseudonymize";
 import { noShowRisk } from "../src/lib/noshow";
 import { zonedToUtc, utcToLocalTimeStr, weekdayOfDateStr } from "../src/lib/dates";
+import { foldGreek } from "../src/lib/greek";
+import { validateAmka, birthDateFromAmka } from "../src/lib/amka";
+import { rateLimit, rateLimitReset } from "../src/lib/ratelimit";
 
 test("zonedToUtc: Athens summer time is UTC+3", () => {
   const d = zonedToUtc("2026-07-07", "09:00");
@@ -91,4 +94,51 @@ test("noShowRisk: smoothed estimate with labels", () => {
   assert.equal(risky.sample, 3);
   const veryRisky = noShowRisk(Array(10).fill({ status: "no_show" }));
   assert.equal(veryRisky.label, "υψηλός");
+});
+
+test("foldGreek: accents, case and final sigma", () => {
+  assert.equal(foldGreek("Παππάς"), "παππασ");
+  assert.equal(foldGreek("ΠΑΠΠΑΣ"), "παππασ");
+  assert.equal(foldGreek("παππας"), "παππασ");
+  assert.equal(foldGreek("Ιωάννου"), "ιωαννου");
+  assert.equal(foldGreek("ΚΑΡΑΓΙΆΝΝΗ"), "καραγιαννη");
+  // a hurried search term must fold to the same string as the stored name
+  assert.equal(foldGreek("μακρη"), foldGreek("Μακρή"));
+  assert.equal(foldGreek("ΧΡΗΣΤΟΥ"), foldGreek("Χρήστου"));
+});
+
+test("validateAmka: structure, birth date and Luhn check digit", () => {
+  assert.equal(validateAmka("1234").valid, false);
+  // 01/01/90 + serial 1234 -> compute the Luhn digit so the case is real
+  const base = "0101901234";
+  let sum = 0;
+  let dbl = true; // position of check digit makes the last base digit doubled
+  for (let i = base.length - 1; i >= 0; i--) {
+    let d = Number(base[i]);
+    if (dbl) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+    dbl = !dbl;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  const valid = base + check;
+  assert.equal(validateAmka(valid).valid, true, `expected ${valid} to be valid`);
+  // flip the check digit -> must fail
+  const bad = base + ((check + 1) % 10);
+  assert.equal(validateAmka(bad).valid, false);
+  // impossible birth date
+  assert.equal(validateAmka("99991234567").valid, false);
+  assert.equal(birthDateFromAmka(valid), "1990-01-01");
+});
+
+test("rateLimit: blocks past the limit and resets", () => {
+  const key = "test:key";
+  rateLimitReset(key);
+  for (let i = 0; i < 3; i++) {
+    assert.equal(rateLimit(key, 3, 60_000).allowed, true);
+  }
+  const blocked = rateLimit(key, 3, 60_000);
+  assert.equal(blocked.allowed, false);
+  assert.ok(blocked.retryAfterSec > 0);
+  rateLimitReset(key);
+  assert.equal(rateLimit(key, 3, 60_000).allowed, true);
 });

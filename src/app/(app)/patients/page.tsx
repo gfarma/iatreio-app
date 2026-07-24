@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { and, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { patients } from "@/db/schema";
 import { requireContext } from "@/lib/session";
+import { foldGreek, sqlFoldExpression } from "@/lib/greek";
 import { ButtonLink, Card, EmptyState, Input, PageTitle } from "@/components/ui";
 
 export const metadata = { title: "Ασθενείς" };
@@ -15,17 +16,22 @@ export default async function PatientsPage({
   const ctx = await requireContext();
   const { q } = await searchParams;
 
+  // Accent- and case-insensitive: typing "παππας" must find "Παππάς".
+  // LIKE wildcards in the query itself are escaped so they stay literal.
+  const term = (q ?? "").trim();
+  const needle = `%${foldGreek(term).replace(/[%_\\]/g, "\\$&")}%`;
+  const nameSql = sql.raw(sqlFoldExpression("first_name || ' ' || last_name"));
+  const nameRevSql = sql.raw(sqlFoldExpression("last_name || ' ' || first_name"));
+
   const rows = await db.query.patients.findMany({
     where: and(
       eq(patients.clinicId, ctx.clinic.id),
       isNull(patients.archivedAt),
-      q
-        ? or(
-            ilike(patients.lastName, `%${q}%`),
-            ilike(patients.firstName, `%${q}%`),
-            ilike(patients.phone, `%${q}%`),
-            ilike(patients.amka, `%${q}%`),
-          )
+      term
+        ? sql`(${nameSql} LIKE ${needle} ESCAPE '\\'
+            OR ${nameRevSql} LIKE ${needle} ESCAPE '\\'
+            OR coalesce(phone, '') LIKE ${needle} ESCAPE '\\'
+            OR coalesce(amka, '') LIKE ${needle} ESCAPE '\\')`
         : undefined,
     ),
     orderBy: (p, { asc }) => [asc(p.lastName), asc(p.firstName)],

@@ -1,24 +1,15 @@
 "use server";
 
+import { headers } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { appointments, availabilityRules, clinics, timeOff } from "@/db/schema";
 import { computeFreeSlots } from "@/lib/slots";
 import { zonedToUtc, addDaysStr, todayStr } from "@/lib/dates";
 import { logAudit } from "@/lib/audit";
+import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export type BookingState = { error?: string; success?: boolean; manageUrl?: string };
-
-// Naive in-memory rate limit (per serverless instance) — good enough to slow
-// down casual abuse on the public form; a real deployment adds an edge limiter.
-const recent = new Map<string, number[]>();
-function rateLimited(key: string, limit = 5, windowMs = 10 * 60_000): boolean {
-  const now = Date.now();
-  const hits = (recent.get(key) ?? []).filter((t) => now - t < windowMs);
-  hits.push(now);
-  recent.set(key, hits);
-  return hits.length > limit;
-}
 
 export async function publicBook(_prev: BookingState, formData: FormData): Promise<BookingState> {
   // Honeypot: bots fill every field
@@ -42,8 +33,11 @@ export async function publicBook(_prev: BookingState, formData: FormData): Promi
   if (date < todayStr() || date > addDaysStr(todayStr(), 60)) {
     return { error: "Επιλέξτε ημερομηνία εντός των επόμενων 60 ημερών." };
   }
-  if (rateLimited(`book:${phone}`)) {
-    return { error: "Πολλές προσπάθειες — δοκιμάστε ξανά αργότερα." };
+  const ip = clientIp(await headers());
+  for (const key of [`book:phone:${phone}`, `book:ip:${ip}`]) {
+    if (!rateLimit(key, 5, 10 * 60_000).allowed) {
+      return { error: "Πολλές προσπάθειες — δοκιμάστε ξανά σε λίγο ή καλέστε μας." };
+    }
   }
 
   const clinic = await db.query.clinics.findFirst({

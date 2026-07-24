@@ -54,8 +54,13 @@ export default async function InvoicesPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
+                    {inv.voidedAt ? <Badge tone="no_show">Ακυρωμένο</Badge> : null}
                     {inv.mydataStatus ? <Badge tone="info">myDATA</Badge> : null}
-                    <span className="font-display text-base font-bold text-pine">
+                    <span
+                      className={`font-display text-base font-bold ${
+                        inv.voidedAt ? "text-mist line-through" : "text-pine"
+                      }`}
+                    >
                       {Number(inv.total).toFixed(2)} €
                     </span>
                   </div>

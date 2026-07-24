@@ -5,6 +5,7 @@ import { patients, specialtyTemplates } from "@/db/schema";
 import { requireContext } from "@/lib/session";
 import { assertCan } from "@/lib/rbac";
 import { aiEnabled } from "@/lib/ai/provider";
+import { createVisit } from "@/app/actions/visits";
 import { Card, PageTitle } from "@/components/ui";
 import { VisitEditor } from "@/components/visit-editor";
 
@@ -40,6 +41,7 @@ export default async function NewVisitPage({
       />
       <Card className="p-6">
         <VisitEditor
+          action={createVisit}
           patientId={patient.id}
           appointmentId={sp.appointmentId}
           templateFields={templates.flatMap((t) => t.fields)}

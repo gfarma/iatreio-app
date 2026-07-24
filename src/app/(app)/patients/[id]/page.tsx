@@ -138,7 +138,17 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
                         {v.notes ?? "—"}
                       </p>
-                      <p className="mt-1.5 text-xs text-mist">{v.doctor.name}</p>
+                      <p className="mt-1.5 flex items-center gap-3 text-xs text-mist">
+                        {v.doctor.name}
+                        {can(ctx.role, "visits.write") ? (
+                          <Link
+                            href={`/visits/${v.id}/edit`}
+                            className="font-semibold text-mist hover:text-pine"
+                          >
+                            ✎ Διόρθωση
+                          </Link>
+                        ) : null}
+                      </p>
                     </li>
                   ))}
                 </ul>
@@ -192,11 +202,19 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
                 ⇩ Εξαγωγή δεδομένων (JSON)
               </a>
               {can(ctx.role, "patients.erase") && !patient.archivedAt ? (
-                <form action={eraseWithId}>
-                  <Button variant="danger" type="submit" className="w-full text-xs">
-                    Οριστική ανωνυμοποίηση (δικαίωμα διαγραφής)
-                  </Button>
-                </form>
+                <div className="border-t border-line pt-3">
+                  <form action={eraseWithId}>
+                    <Button variant="danger" type="submit" className="w-full text-xs">
+                      Ανωνυμοποίηση προσωπικών στοιχείων
+                    </Button>
+                  </form>
+                  <p className="mt-2 text-xs leading-relaxed text-mist">
+                    Διαγράφει ονοματεπώνυμο, ΑΜΚΑ και στοιχεία επικοινωνίας. Ο{" "}
+                    <strong>ιατρικός φάκελος διατηρείται</strong>: ο νόμος (ν.3418/2005) επιβάλλει
+                    τήρηση για 10 έτη και το GDPR το επιτρέπει ρητά ως νομική υποχρέωση
+                    (άρθρο 17 παρ. 3).
+                  </p>
+                </div>
               ) : null}
             </div>
           </Card>

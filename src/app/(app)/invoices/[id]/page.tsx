@@ -4,7 +4,9 @@ import { db } from "@/db";
 import { invoices } from "@/db/schema";
 import { requireContext } from "@/lib/session";
 import { formatDateGr } from "@/lib/dates";
-import { ButtonLink, Card } from "@/components/ui";
+import { can } from "@/lib/rbac";
+import { voidInvoice } from "@/app/actions/invoices";
+import { Button, ButtonLink, Card, Input } from "@/components/ui";
 import { PrintButton } from "@/components/print-button";
 
 export const metadata = { title: "Απόδειξη" };
@@ -27,6 +29,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         </ButtonLink>
         <PrintButton />
       </div>
+
+      {inv.voidedAt ? (
+        <div className="mb-4 rounded-xl border border-clay/40 bg-clay/10 px-4 py-3 text-sm text-clay">
+          <strong>Ακυρωμένο παραστατικό</strong> — {inv.voidReason}
+        </div>
+      ) : null}
 
       <Card className="p-8">
         <div className="mb-8 flex items-start justify-between">
@@ -92,6 +100,23 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             : "Δεν έχει διαβιβαστεί στο myDATA (διαθέσιμο στη Φάση 2)."}
         </p>
       </Card>
+
+      {!inv.voidedAt && can(ctx.role, "invoices.write") ? (
+        <Card className="no-print mt-6 p-5">
+          <h3 className="font-display text-base font-semibold">Ακύρωση παραστατικού</h3>
+          <p className="mb-3 mt-1 text-xs leading-relaxed text-mist">
+            Το παραστατικό δεν διαγράφεται — σημειώνεται ως ακυρωμένο ώστε να μη σπάσει η
+            αρίθμηση της σειράς.
+          </p>
+          <form action={voidInvoice} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="id" value={inv.id} />
+            <Input name="reason" placeholder="Αιτία ακύρωσης" className="w-56" />
+            <Button variant="danger" type="submit" className="text-xs">
+              Ακύρωση
+            </Button>
+          </form>
+        </Card>
+      ) : null}
     </div>
   );
 }

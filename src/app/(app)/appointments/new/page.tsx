@@ -5,14 +5,15 @@ import { requireContext } from "@/lib/session";
 import { assertCan } from "@/lib/rbac";
 import { createAppointment } from "@/app/actions/appointments";
 import { todayStr } from "@/lib/dates";
-import { Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Card, PageTitle } from "@/components/ui";
+import { AppointmentForm } from "@/components/appointment-form";
 
 export const metadata = { title: "Νέο ραντεβού" };
 
 export default async function NewAppointmentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; patientId?: string }>;
+  searchParams: Promise<{ date?: string; time?: string; patientId?: string }>;
 }) {
   const ctx = await requireContext();
   assertCan(ctx.role, "appointments.write");
@@ -34,53 +35,18 @@ export default async function NewAppointmentPage({
     <div className="mx-auto max-w-xl">
       <PageTitle title="Νέο ραντεβού" subtitle={ctx.clinic.name} />
       <Card className="p-6">
-        <form action={createAppointment} className="space-y-4">
-          <Field label="Ασθενής" hint="Προαιρετικό — μπορεί να συνδεθεί αργότερα">
-            <Select name="patientId" defaultValue={sp.patientId ?? ""}>
-              <option value="">— Χωρίς σύνδεση —</option>
-              {patientRows.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.lastName} {p.firstName}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Ιατρός">
-            <Select name="doctorUserId" required defaultValue={doctors[0]?.user.id}>
-              {doctors.map((d) => (
-                <option key={d.user.id} value={d.user.id}>
-                  {d.user.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Ημερομηνία">
-              <Input name="date" type="date" defaultValue={sp.date ?? todayStr()} required />
-            </Field>
-            <Field label="Ώρα">
-              <Input name="time" type="time" defaultValue="09:00" required />
-            </Field>
-            <Field label="Διάρκεια">
-              <Select name="duration" defaultValue="30">
-                {[15, 20, 30, 45, 60, 90].map((m) => (
-                  <option key={m} value={m}>
-                    {m}′
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Αιτία επίσκεψης">
-              <Input name="reason" placeholder="π.χ. Έλεγχος σπίλων" />
-            </Field>
-            <Field label="Χώρος / Αίθουσα">
-              <Input name="room" placeholder="π.χ. Εξεταστήριο 1" />
-            </Field>
-          </div>
-          <Button type="submit">Καταχώρηση ραντεβού</Button>
-        </form>
+        <AppointmentForm
+          action={createAppointment}
+          doctors={doctors.map((d) => ({ id: d.user.id, label: d.user.name }))}
+          patients={patientRows.map((p) => ({ id: p.id, label: `${p.lastName} ${p.firstName}` }))}
+          defaults={{
+            patientId: sp.patientId,
+            date: sp.date ?? todayStr(),
+            time: sp.time ?? "09:00",
+            duration: 30,
+          }}
+          submitLabel="Καταχώρηση ραντεβού"
+        />
       </Card>
     </div>
   );

@@ -167,7 +167,12 @@ export default async function AppointmentsPage({
                               ) : (
                                 <>
                                   {a.contactName ?? "—"}{" "}
-                                  <span className="text-xs font-normal text-ochre">(online)</span>
+                                  <Link
+                                    href={`/appointments/${a.id}/link`}
+                                    className="text-xs font-normal text-ochre underline decoration-dotted hover:text-pine"
+                                  >
+                                    (online — σύνδεση με φάκελο)
+                                  </Link>
                                 </>
                               )}
                             </p>
@@ -196,6 +201,16 @@ export default async function AppointmentsPage({
                           {["pending", "confirmed"].includes(a.status) ? (
                             <CopyLinkButton path={`/r/${a.manageToken}`} />
                           ) : null}
+                        </form>
+                        <div className="no-print mt-1.5 flex items-center gap-3">
+                          {!["completed", "cancelled"].includes(a.status) ? (
+                            <Link
+                              href={`/appointments/${a.id}/edit`}
+                              className="text-xs font-semibold text-mist hover:text-pine"
+                            >
+                              ✎ Αλλαγή ώρας
+                            </Link>
+                          ) : null}
                           {a.patient && a.status === "completed" ? (
                             <Link
                               href={`/visits/new?patientId=${a.patient.id}&appointmentId=${a.id}`}
@@ -204,7 +219,7 @@ export default async function AppointmentsPage({
                               + Επίσκεψη
                             </Link>
                           ) : null}
-                        </form>
+                        </div>
                       </li>
                     ))}
                   </ul>

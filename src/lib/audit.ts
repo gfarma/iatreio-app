@@ -2,7 +2,8 @@ import { db } from "@/db";
 import { auditLogs } from "@/db/schema";
 
 type AuditEntry = {
-  clinicId: string;
+  /** null for clinic-independent events such as sign-in. */
+  clinicId: string | null;
   userId?: string | null;
   action: string; // e.g. "patient.read", "visit.create", "ai.structure_notes"
   entityType: string;
