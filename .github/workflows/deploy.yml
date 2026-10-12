@@ -1,0 +1,80 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # Κουμπί «Run workflow» / `gh workflow run deploy.yml`: ξανά deploy χωρίς SSH
+  # (π.χ. όταν ένα περιστατικό του GitHub καταπιεί το run ενός merge).
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy μετά το build (false = μόνο build και push του image)"
+        type: boolean
+        default: true
+
+# Ένα deploy τη φορά, και ποτέ ακύρωση στη μέση μιας αλλαγής container.
+concurrency:
+  group: iatreio-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/gfarma/iatreio
+
+jobs:
+  # 🔴 2026-10-12: το build ΔΕΝ γίνεται στον server. Μέχρι τότε το update ήταν
+  # `docker compose up -d --build` στον hetzner, δηλαδή `next build` δίπλα στην κοινή
+  # Elasticsearch του fshome. Την ίδια μέρα ένα τέτοιο build (findengine) γέμισε τη
+  # μνήμη και ο kernel σκότωσε 18 φορές την ES: αναζήτηση κάτω σε fshome.gr και studio.
+  # Εδώ χτίζεται το image, και ο server μόνο το τραβά (/opt/deploy-hooks/iatreio.sh).
+  build:
+    name: Build and push the image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - id: sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Το Dockerfile είναι αυτάρκες: κανένα build arg, τα .env* εξαιρούνται από το
+      # .dockerignore, άρα κανένα μυστικό μέσα στο image (το repo είναι public).
+      # Μετρημένο 12/10: κανένα αρχείο εκτός git στο /opt/iatreio πέρα από το .env.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.sha.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Hetzner
+    runs-on: ubuntu-latest
+    needs: build
+    # Το push δεν έχει inputs: εκεί deploy πάντα.
+    if: github.event_name == 'push' || inputs.deploy
+    steps:
+      # Περιορισμένο κλειδί: το HETZNER_DEPLOY_KEY είναι δεμένο στον server με
+      # `restrict,command="/opt/deploy-hooks/run iatreio"`. Ό,τι κι αν σταλεί, ο server
+      # τρέχει ΜΟΝΟ το /opt/deploy-hooks/iatreio.sh (git sync + pull του image + αλλαγή
+      # container χωρίς διακοπή). Η λέξη `deploy` αγνοείται. Διαρροή του κλειδιού =
+      # κάποιος ξανακάνει deploy το ίδιο image, όχι root στον server. Αλλαγή στα βήματα
+      # = αλλαγή στο hook στον server, όχι εδώ. Host key καρφωμένο.
+      - name: Deploy to Hetzner (restricted key)
+        env:
+          DEPLOY_KEY: ${{ secrets.HETZNER_DEPLOY_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "46.225.102.204 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIUnYkMNbNmBqbiuV1N1/lg+phTNgdDksEbZc14tl7OO" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 root@46.225.102.204 deploy
