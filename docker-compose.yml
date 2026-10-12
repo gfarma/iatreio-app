@@ -15,8 +15,19 @@ services:
       retries: 10
 
   iatreio-app:
-    build: .
+    # 2026-10-12: χτίζεται στο GitHub (.github/workflows/deploy.yml), ΠΟΤΕ στον server:
+    # `next build` εκεί γέμιζε τη μνήμη δίπλα στην Elasticsearch του fshome.
+    # Τοπικά: `docker build -t ghcr.io/gfarma/iatreio:latest .` αν χρειαστεί.
+    image: ghcr.io/gfarma/iatreio:latest
     container_name: iatreio-app
+    # Το zd_swap (αλλαγή χωρίς διακοπή) περιμένει healthy πριν σβήσει το παλιό.
+    # start_period: στην εκκίνηση τρέχουν db:migrate + db:seed πριν το next start.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://iatreio:${POSTGRES_PASSWORD}@iatreio-db:5432/iatreio

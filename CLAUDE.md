@@ -17,13 +17,16 @@ Tailwind 4 · fonts Literata + Commissioner.
 **LIVE:** https://iatreio.46-225-102-204.sslip.io — self-hosted στον **Hetzner**,
 **όχι Vercel** (απορρίφθηκε ρητά). Το sslip.io hostname σημαίνει μηδέν DNS setup.
 
-- Φάκελος: `/opt/iatreio` (git clone) · `docker compose up -d --build` (postgres:16 + app)
-- Secrets: `/opt/iatreio/.env` · container `iatreio-app` στο δίκτυο `fshome-elastic_elastic`
+- Φάκελος: `/opt/iatreio` (git clone, μόνο για compose/.env) · image `ghcr.io/gfarma/iatreio` (postgres:16 + app)
+- Secrets: `/opt/iatreio/.env` · container `iatreio-app` στο ΔΙΚΟ του δίκτυο `iatreio_web` (μόνο με το `fshome-nginx`, από 01/10/2026· ΠΟΤΕ το κοινό `fshome-elastic_elastic`)
 - vhost: `/opt/fshome/nginx/conf.d/iatreio.conf`
 - ⚠️ Cert μέσω certbot **με `--config-dir /opt/fshome/certbot/conf`** — χωρίς αυτό γράφει στο
   `/etc/letsencrypt` του host, που **δεν** το βλέπει το `fshome-nginx`.
 
-**Update:** push → `ssh hetzner "cd /opt/iatreio && git pull && docker compose up -d --build"`
+**Update:** merge στο `main` → **αυτόματο deploy** (`.github/workflows/deploy.yml`): το GitHub χτίζει το
+image, και ο server (hook `/opt/deploy-hooks/iatreio.sh`, περιορισμένο κλειδί) κάνει git sync + pull +
+αλλαγή container χωρίς διακοπή. 🔴 ΠΟΤΕ `--build` στον hetzner (12/10/2026: `next build` εκεί σκότωνε την
+Elasticsearch του fshome). Ξανά deploy χωρίς merge: `gh workflow run deploy.yml -R gfarma/iatreio-app`.
 
 **Demo:** `owner@demo.gr` / `doctor@demo.gr` / `staff@demo.gr` — `demo1234`.
 Seed: `npm run db:seed`. Dev: launch.json `iatreio-dev`, port 3005.
